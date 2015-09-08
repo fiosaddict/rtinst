@@ -3,7 +3,7 @@ PATH=/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin:/bin:/sbin
 
 rtorrentloc='http://rtorrent.net/downloads/rtorrent-0.9.6.tar.gz'
 libtorrentloc='http://rtorrent.net/downloads/libtorrent-0.13.6.tar.gz'
-xmlrpcloc='https://svn.code.sf.net/p/xmlrpc-c/code/stable'
+xmlrpcloc='https://svn.code.sf.net/p/xmlrpc-c/code/advanced'
 
 FULLREL=$(cat /etc/issue.net)
 SERVERIP=$(ip a s eth0 | awk '/inet / {print$2}' | cut -d/ -f1)
@@ -419,7 +419,7 @@ else
   sed -i '/^ssl_ciphers/ c\ssl_ciphers=HIGH' /etc/vsftpd.conf
 fi
 
-openssl req -x509 -nodes -days 3650 -subj /CN=$SERVERIP -newkey rsa:2048 -keyout /etc/ssl/private/vsftpd.pem -out /etc/ssl/private/vsftpd.pem >> $logfile 2>&1
+openssl req -x509 -sha256 -nodes -days 3650 -subj /CN=$SERVERIP -newkey rsa:4096 -keyout /etc/ssl/private/vsftpd.pem -out /etc/ssl/private/vsftpd.pem >> $logfile 2>&1
 
 service vsftpd restart
 
@@ -433,7 +433,7 @@ if [ $install_rt = 0 ]; then
   cd source
   echo "Downloading rtorrent source files" | tee -a $logfile
 
-  svn co $xmlrpcloc xmlrpc  >> $logfile 2>&1 || error_exit "Unable to download xmlrpc source files from https://svn.code.sf.net/p/xmlrpc-c/code/stable"
+  svn co $xmlrpcloc xmlrpc  >> $logfile 2>&1 || error_exit "Unable to download xmlrpc source files from https://svn.code.sf.net/p/xmlrpc-c/code/advanced"
   curl -# $libtorrentloc | tar xz  >> $logfile 2>&1 || error_exit "Unable to download libtorrent source files from http://libtorrent.rakshasa.no/downloads"
   curl -# $rtorrentloc | tar xz  >> $logfile 2>&1 || error_exit "Unable to download rtorrent source files from http://libtorrent.rakshasa.no/downloads"
 
@@ -520,6 +520,56 @@ echo "?>" >> /var/www/rutorrent/conf/users/$user/config.php
 
 mv $home/rtscripts/ru.ini /var/www/rutorrent/conf/plugins.ini
 
+# install additional plugins
+echo "Installing Additional Plugins" | tee -a $logfile
+cd /var/www/rutorrent/plugins
+# logoff
+svn co http://rutorrent-logoff.googlecode.com/svn/trunk/ logoff
+# ruTorrentMobile (voir init.js)
+git clone https://github.com/xombiemp/rutorrentMobile.git mobile
+# filemanager
+svn co http://svn.rutorrent.org/svn/filemanager/trunk/filemanager
+# filemanager config
+cat <<'EOF' >  /var/www/rutorrent/plugins/filemanager/conf.php
+<?php
+$fm['tempdir'] = '/tmp';		// path were to store temporary data ; must be writable
+$fm['mkdperm'] = 755;			// default permission to set to new created directories
+// set with fullpath to binary or leave empty
+$pathToExternals['rar'] = '/usr/bin/rar';
+$pathToExternals['zip'] = '/usr/bin/zip';
+$pathToExternals['unzip'] = '/usr/bin/unzip';
+$pathToExternals['tar'] = '/bin/tar';
+$pathToExternals['gzip'] = '/bin/gzip';
+$pathToExternals['bzip2'] = '/bin/bzip2';
+// archive mangling, see archiver man page before editing
+$fm['archive']['types'] = array('rar', 'zip', 'tar', 'gzip', 'bzip2');
+$fm['archive']['compress'][0] = range(0, 5);
+$fm['archive']['compress'][1] = array('-0', '-1', '-9');
+$fm['archive']['compress'][2] = $fm['archive']['compress'][3] = $fm['archive']['compress'][4] = array(0);
+?>
+EOF
+# configuration du plugin create
+sed -i "s#$useExternal = false;#$useExternal = 'buildtorrent';#" /var/www/rutorrent/plugins/create/conf.php
+sed -i "s#$pathToCreatetorrent = '';#$pathToCreatetorrent = '/usr/bin/buildtorrent';#" /var/www/rutorrent/plugins/create/conf.php
+# fileshare
+cd /var/www/rutorrent/plugins
+svn co http://svn.rutorrent.org/svn/filemanager/trunk/fileshare
+chown -R www-data:www-data /var/www/rutorrent/plugins/fileshare
+ln -s /var/www/rutorrent/plugins/fileshare/share.php /var/www/base/share.php
+# configuration share.php
+cat <<'EOF' >  /var/www/rutorrent/plugins/fileshare/conf.php
+<?php
+// limits
+// 0 = unlimited
+$limits['duration'] = 200;		// maximum duration hours
+$limits['links'] = 0;			//maximum sharing links per user
+// path on domain where a symlink to share.php can be found
+// example: http://mydomain.com/share.php
+$downloadpath = 'http://@IP@/share.php';
+?>
+EOF
+sed -i "s/@IP@/$IP/g;" /var/www/rutorrent/plugins/fileshare/conf.php
+
 # install nginx
 cd $home
 
@@ -535,7 +585,7 @@ htpasswd -c -b $passfile $user $WEBPASS >> $logfile 2>&1
 chown www-data:www-data $passfile
 chmod 640 $passfile
 
-openssl req -x509 -nodes -days 3650 -subj /CN=$SERVERIP -newkey rsa:2048 -keyout /etc/ssl/ruweb.key -out /etc/ssl/ruweb.crt >> $logfile 2>&1
+openssl req -x509 -sha256 -nodes -days 3650 -subj /CN=$SERVERIP -newkey rsa:4096 -keyout /etc/ssl/ruweb.key -out /etc/ssl/ruweb.crt >> $logfile 2>&1
 
 sed -i "s/user www-data;/user www-data www-data;/g" /etc/nginx/nginx.conf
 sed -i "s/worker_processes 4;/worker_processes 1;/g" /etc/nginx/nginx.conf
