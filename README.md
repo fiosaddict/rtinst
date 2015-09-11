@@ -39,7 +39,7 @@ Run the script from root, or if you have a sudo user already set up you can run 
 
 First download the script:
 
-	wget --no-check-certificate https://raw.githubusercontent.com/arakasi72/rtinst/master/rtinst.sh
+	wget --no-check-certificate https://raw.githubusercontent.com/fiosaddict/rtinst/master/rtinst.sh
 
 and then to run it:
 
